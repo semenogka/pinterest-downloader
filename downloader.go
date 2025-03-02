@@ -24,17 +24,17 @@ type Links struct {
 }
 
 // NewLinks создает новый экземпляр Links.
-func NewLinks() *Links {
+func NewVideo() *Links {
 	return &Links{}
 }
 
-// Download загружает и обрабатывает видео и аудио.
-func (ls *Links) Download(link string) error {
+// DownloadFullVideo загружает видео со звуком. Самый простой способ скачать видео через одну функцию.
+func (ls *Links) DownloadFullVideo(link string) error {
 	if err := ls.setupNetwork(link); err != nil {
 		return fmt.Errorf("ошибка настройки сети: %v", err)
 	}
 
-	if err := ls.download(); err != nil {
+	if err := ls.DownloadAndMerge(); err != nil {
 		return fmt.Errorf("ошибка загрузки и обработки: %v", err)
 	}
 
@@ -85,27 +85,27 @@ func (ls *Links) setupNetwork(link string) error {
 }
 
 // download обрабатывает и объединяет видео и аудио.
-func (ls *Links) download() error {
+func (ls *Links) DownloadAndMerge() error {
 	if len(ls.requestsVideoCmfv) == 0 {
 		ls.requestVideo = ls.requestsVideoM3U8[len(ls.requestsVideoM3U8)-1]
-		if err := ls.savetsvideo(ls.requestVideo); err != nil {
+		if err := ls.SaveTsVideo(ls.requestVideo); err != nil {
 			return fmt.Errorf("ошибка сохранения TS видео: %v", err)
 		}
 
-		if err := ls.convertTSToMP4("output.ts", "output.mp4"); err != nil {
+		if err := ls.ConvertTSToMP4("output.ts", "output.mp4"); err != nil {
 			return fmt.Errorf("ошибка конвертации TS в MP4: %v", err)
 		}
 
 	} else {
 		ls.requestVideo = ls.requestsVideoCmfv[len(ls.requestsVideoCmfv)-1]
-		if err := ls.saveVideo(ls.requestVideo, "video.mp4"); err != nil {
+		if err := ls.SaveVideo(ls.requestVideo, "video.mp4"); err != nil {
 			return fmt.Errorf("ошибка сохранения видео: %v", err)
 		}
 
 		downloadPath := "downloaded_audio.m4a"
 		outputPath := "audio.mp3"
 
-		if err := ls.saveAudio(ls.requestAudio, downloadPath); err != nil {
+		if err := ls.SaveAudio(ls.requestAudio, downloadPath); err != nil {
 			return fmt.Errorf("ошибка сохранения аудио: %v", err)
 		}
 
@@ -114,7 +114,7 @@ func (ls *Links) download() error {
 		}
 		os.Remove(downloadPath)
 
-		if err := ls.mergeVideoAndAudio("video.mp4", "audio.mp3", "output.mp4"); err != nil {
+		if err := ls.MergeVideoAndAudio("video.mp4", "audio.mp3", "output.mp4"); err != nil {
 			return fmt.Errorf("ошибка объединения видео и аудио: %v", err)
 		}
 	}
@@ -122,14 +122,14 @@ func (ls *Links) download() error {
 	return nil
 }
 
-// saveVideo сохраняет видео по указанному URL.
-func (ls *Links) saveVideo(url, outputPath string) error {
-	return ls.downloadFile(url, outputPath)
+// saveVideo сохраняет только видео.
+func (ls *Links) SaveVideo(url, outputPath string) error {
+	return ls.DownloadFile(url, outputPath)
 }
 
-// saveAudio сохраняет аудио по указанному URL.
-func (ls *Links) saveAudio(url, outputPath string) error {
-	return ls.downloadFile(url, outputPath)
+// saveAudio сохраняет только аудио из видео.
+func (ls *Links) SaveAudio(url, outputPath string) error {
+	return ls.DownloadFile(url, outputPath)
 }
 
 // convertToMP3 конвертирует аудиофайл в формат MP3.
@@ -139,7 +139,7 @@ func (ls *Links) convertToMP3(inputFile, outputFile string) error {
 }
 
 // savetsvideo обрабатывает M3U8 плейлист и сохраняет видео в формате TS.
-func (ls *Links) savetsvideo(url string) error {
+func (ls *Links) SaveTsVideo(url string) error {
 	parts := strings.SplitN(url, "/", 10)
 	prefixTsFile := strings.Join(parts[:9], "/") + "/"
 
@@ -168,7 +168,7 @@ func (ls *Links) savetsvideo(url string) error {
 			requestTs := prefixTsFile + line
 			log.Println(requestTs)
 
-			tsPart, err := ls.saveTsPart(requestTs, i)
+			tsPart, err := ls.SaveTsPart(requestTs, i)
 			if err != nil {
 				return fmt.Errorf("ошибка сохранения TS части: %v", err)
 			}
@@ -190,7 +190,7 @@ func (ls *Links) savetsvideo(url string) error {
 }
 
 // saveTsPart сохраняет часть TS-файла.
-func (ls *Links) saveTsPart(url string, index int) (*os.File, error) {
+func (ls *Links) SaveTsPart(url string, index int) (*os.File, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка загрузки TS части: %v", err)
@@ -211,7 +211,7 @@ func (ls *Links) saveTsPart(url string, index int) (*os.File, error) {
 }
 
 // downloadFile загружает файл по URL и сохраняет его на диск.
-func (ls *Links) downloadFile(url, outputPath string) error {
+func (ls *Links) DownloadFile(url, outputPath string) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("ошибка загрузки файла: %v", err)
@@ -232,13 +232,13 @@ func (ls *Links) downloadFile(url, outputPath string) error {
 }
 
 // convertTSToMP4 конвертирует TS-файл в MP4.
-func (ls *Links) convertTSToMP4(inputFile, outputFile string) error {
+func (ls *Links) ConvertTSToMP4(inputFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", inputFile, outputFile)
 	return cmd.Run()
 }
 
 // mergeVideoAndAudio объединяет видео и аудио в один файл.
-func (ls *Links) mergeVideoAndAudio(videoFile, audioFile, outputFile string) error {
+func (ls *Links) MergeVideoAndAudio(videoFile, audioFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", videoFile, "-i", audioFile, outputFile)
 	return cmd.Run()
 }
