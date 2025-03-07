@@ -39,32 +39,28 @@ func Client() *Links {
 // DownloadFullVideo downloads a video with audio. The simplest way to download a video in one function.
 // collects all requests, downloads video and audio and combines them into one separate file.
 // then deletes unnecessary files.
-func (ls *Links) DownloadFullVideo(link string, videoFile string, audioFile string, outputFile string) error {
+func (ls *Links) DownloadFullVideo(link string, outputFile string) error {
 	
 	err := ls.TakeRequests(link)
 	if err != nil {
 		return err
 	}
 	
-	err = ls.SaveVideo(ls.requestVideo, videoFile)
+	err = ls.SaveVideo(ls.requestVideo, "temporaryVideoFile.mp4")
 	if err != nil {
 		return err
 	}
 
-	err = ls.SaveAudio(ls.requestAudio, audioFile)
+	err = ls.SaveAudio(ls.requestAudio, "temporaryAudioFile.mp3")
 	if err != nil {
 		return err
 	}
 
 
-	ls.MergeVideoAndAudio(videoFile, audioFile, outputFile)
-
-
-	// Cleaning temporary files
-	os.Remove(audioFile)
-	os.Remove(videoFile)
-	os.Remove("output.ts")
-	os.Remove("audio.m4a")
+	err = ls.MergeVideoAndAudio("temporaryVideoFile.mp4", "temporaryAudioFile.mp3", outputFile) 
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -137,16 +133,17 @@ func (ls *Links) SaveVideo(url, outputFile string) error {
 
 // SaveAudio saves only the audio from the video.
 func (ls *Links) SaveAudio(url, outputFile string) error {
-	err := ls.downloadFile(url, "audio.m4a")
+	err := ls.downloadFile(url, "temporaryAudioM4A.m4a")
 	if err != nil {
 		return fmt.Errorf("error while downloading: %v", err)
 	}
 
-	err = ls.convertToMP3("audio.m4a", outputFile)
+	err = ls.convertToMP3("temporaryAudioM4A.m4a", outputFile)
 	if err != nil {
 		return  fmt.Errorf("error converting to mp3: %v", err)
 	}
-	os.Remove("audio.m4a")
+	os.Remove("temporaryAudioM4A.m4a")
+
 	return nil
 }
 
@@ -253,13 +250,22 @@ func (ls *Links) downloadFile(url, outputFile string) error {
 // convertTSToMP4 converts a TS file to MP4.
 func (ls *Links) convertTSToMP4(inputFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", inputFile, outputFile)
-	return cmd.Run()
+	cmd.Run()
+
+	os.Remove(inputFile)
+	return nil 
 }
 
 // MergeVideoAndAudio merges video and audio into one file.
 func (ls *Links) MergeVideoAndAudio(videoFile, audioFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", videoFile, "-i", audioFile, outputFile)
-	return cmd.Run()
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("cmd.Run() error: %v", err)
+	}
+	
+	os.Remove(videoFile)
+	os.Remove(audioFile)
+
+	return nil 
 }
-
-
