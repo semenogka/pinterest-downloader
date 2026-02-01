@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/chromedp"
 	c "github.com/chromedp/chromedp"
 )
 
@@ -68,36 +69,55 @@ func (ls *Links) DownloadFullVideo(link string, outputFile string) error {
 // setupNetwork intercepts network requests using chromedp.
 // thats all, i think.
 func (ls *Links) setupNetwork(link string) error {
+	// FIX: Add options to disable problematic features
+	opts := append(c.DefaultExecAllocatorOptions[:],
+		c.Flag("disable-features", "PrivateNetworkAccess"),
+		c.Flag("disable-web-security", true),
+		c.Flag("ignore-certificate-errors", true),
+		c.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+	)
 
-	ctx, cancel := c.NewContext(context.Background())
+	allocCtx, cancel := c.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 
+	ctx, cancel := c.NewContext(allocCtx)
+	defer cancel()
+
+	// Enable network
 	if err := c.Run(ctx, network.Enable()); err != nil {
 		return fmt.Errorf("network problem: %v", err)
 	}
 
-	c.ListenTarget(ctx, func(ev any) {
-		event, ok := ev.(*network.EventRequestWillBeSent)
-		if ok {
-			if strings.HasSuffix(event.Request.URL, "cmfa") {
-				ls.requestAudio = event.Request.URL
+	// Listen for requests
+	c.ListenTarget(ctx, func(ev interface{}) {
+		switch e := ev.(type) {
+		case *network.EventRequestWillBeSent:
+			url := e.Request.URL
+			if strings.HasSuffix(url, "cmfa") || strings.Contains(url, ".cmfa") {
+				ls.requestAudio = url
 			}
-			if strings.HasSuffix(event.Request.URL, "cmfv") {
-				ls.requestsVideoCmfv = append(ls.requestsVideoCmfv, event.Request.URL)
+			if strings.HasSuffix(url, "cmfv") || strings.Contains(url, ".cmfv") {
+				ls.requestsVideoCmfv = append(ls.requestsVideoCmfv, url)
 			}
-			if strings.HasSuffix(event.Request.URL, "m3u8") {
-				ls.requestsVideoM3U8 = append(ls.requestsVideoM3U8, event.Request.URL)
+			if strings.HasSuffix(url, "m3u8") || strings.Contains(url, ".m3u8") {
+				ls.requestsVideoM3U8 = append(ls.requestsVideoM3U8, url)
 			}
 		}
 	})
 
-	if err := c.Run(ctx, c.Navigate(link)); err != nil {
+	// Navigate to the page
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(link),
+		chromedp.Sleep(5*time.Second), // Wait for page to load
+	); err != nil {
 		return fmt.Errorf("navigation error: %v", err)
 	}
 
-	time.Sleep(3 * time.Second)
+	// Additional wait for resources
+	time.Sleep(2 * time.Second)
 	return nil
 }
+
 
 // TakeRequests finds video and audio links.
 func (ls *Links) TakeRequests(link string) error {
