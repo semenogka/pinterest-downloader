@@ -1,7 +1,7 @@
-🚀 **Pinterest Downloader** — это библиотека на Go для скачивания видео с Pinterest по ссылке.  
-Программа получает прямую ссылку на видео и сохраняет файл локально.
+🚀 **Pinterest Downloader** — This is Go library is for downloading videos from Pinterest via a link.
+The program receives a direct link to the video and saves the file locally.
 
-Можно сохранить отдельно видео и аудио.
+You can save video and audio of different quality separately.
 
-Для использования нужно импортировать библиотеку в go и прочитать документацию в скрипте downloader.go. Там расписано что делает каждая отдельная функция.
-Для работы данной библиотеки нужно скачать ffmpeg на свой компьютер.
+To use it, you need to import the component in Go and read the documentation in the downloader.go script. A separate function is scheduled there.
+To use this library, you need to download ffmpeg to your computer.
