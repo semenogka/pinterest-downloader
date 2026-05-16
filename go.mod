@@ -1,4 +1,4 @@
-module github.com/semenogka/pinterest-downloader
+module github.com/semenogka/pinterest-downloader/v2
 
 go 1.23.2
 
