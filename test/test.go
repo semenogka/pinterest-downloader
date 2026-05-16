@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	err := pin.Client().DownloadFullVideo("some url", "video.mp4", "high", false)
+	err := pin.Client().SaveAudio("https://pin.it/3XI0InE3D", "video.mp4")
 	if err != nil {
 		log.Println(err)
 	}

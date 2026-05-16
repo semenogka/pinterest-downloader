@@ -7,7 +7,7 @@ import (
 )
 
 // convertTSToMP4 converts a TS file to MP4.
-func convertTSToMP4(inputFile, outputFile string) error {
+func ConvertTSToMP4(inputFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", inputFile, outputFile)
 	cmd.Run()
 
@@ -30,7 +30,7 @@ func MergeVideoAndAudio(videoFile, audioFile, outputFile string) error {
 }
 
 // convertToMP3 converts an audio file to MP3 format.
-func convertToMP3(inputFile, outputFile string) error {
+func ConvertToMP3(inputFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", inputFile, "-vn", "-acodec", "libmp3lame", "-b:a", "192k", outputFile)
 	return cmd.Run()
 }

@@ -13,7 +13,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,21 +21,24 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	c "github.com/chromedp/chromedp"
+	goffmpeg "github.com/semenogka/pinterest-downloader/v2/GO_ffmpeg"
+	ts "github.com/semenogka/pinterest-downloader/v2/TS"
 )
 
 // urls represents a structure for video and audio URLs.
 // There are two arrays: cmfv and m3u8. In them, all requests that can have ownership of the video are created.
 // requestVideo and requestAudio are the final links to audio and video.
-type URLS struct {
+type INFO struct {
 	requestsVideoCmfv []string
 	requestsVideoM3U8 []string
 	requestAudio      string
 	requestVideo      string
+	taked 			  bool
 }
 
 // Client creates a new Links instance.
-func Client() *URLS {
-	return &URLS{}
+func Client() *INFO {
+	return &INFO{}
 }
 
 // DownloadFullVideo downloads a video with audio. The simplest way to download a video in one function.
@@ -44,41 +46,48 @@ func Client() *URLS {
 // then deletes unnecessary files.
 //video quality: high, mid or low.
 //logs for urls in console
-func (ls *URLS) DownloadFullVideo(url string, outputFile string, quality string, logs bool) error {
-	
+func (ls *INFO) DownloadFullVideo(url string, outputFile string, quality string, logs bool) error {
 	err := ls.TakeRequests(url, quality)
 	if err != nil {
 		return err
 	}
+
 	if logs{
 		log.Println(ls.requestAudio)
 		log.Println(ls.requestsVideoCmfv)
 		log.Println(ls.requestsVideoM3U8)
 		log.Println(ls.requestVideo)
 	}
-	
-	err = ls.SaveVideo(ls.requestVideo, "temporaryVideoFile.mp4")
-	if err != nil {
-		return err
+
+	if len(ls.requestsVideoCmfv) != 0{
+		err = ls.SaveVideo(ls.requestVideo, "temporaryVideoFile.mp4", quality)
+		if err != nil {
+			return err
+		}
+
+		if len(ls.requestAudio) != 0 {
+			err = ls.SaveAudio("None","temporaryAudioFile.mp3")
+			if err != nil {
+				return err
+			}
+		}
+
+		err = goffmpeg.MergeVideoAndAudio("temporaryVideoFile.mp4", "temporaryAudioFile.mp3", outputFile) 
+		if err != nil {
+			return err
+		}
+	} else {
+		err = ls.SaveVideo(ls.requestVideo, outputFile, quality)
+		if err != nil {
+			return err
+		}
 	}
-
-	err = ls.SaveAudio(ls.requestAudio, "temporaryAudioFile.mp3")
-	if err != nil {
-		return err
-	}
-
-
-	err = MergeVideoAndAudio("temporaryVideoFile.mp4", "temporaryAudioFile.mp3", outputFile) 
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
 // setupNetwork intercepts network requests using chromedp.
 // thats all, i think.
-func (ls *URLS) setupNetwork(url string) error {
+func (ls *INFO) SetupNetwork(url string) error {
 	cmfvMap := make(map[string]int)
 	m3u8Map := make(map[string]int)
 	// FIX: Add options to disable problematic features
@@ -143,7 +152,7 @@ func (ls *URLS) setupNetwork(url string) error {
 }
 
 //make array of url with different image quality:low, mid, high
-func (ls *URLS) UniqueUrls(cmfvMap map[string]int, m3u8Map map[string]int) {
+func (ls *INFO) UniqueUrls(cmfvMap map[string]int, m3u8Map map[string]int) {
 	//u-url, q-quality
 	type uq struct {
 		Url   string
@@ -177,41 +186,48 @@ func (ls *URLS) UniqueUrls(cmfvMap map[string]int, m3u8Map map[string]int) {
 
 
 // TakeRequests finds video and audio links.
-func (ls *URLS) TakeRequests(url string, quality string) error {
-	if err := ls.setupNetwork(url); err != nil {
+func (ls *INFO) TakeRequests(url string, quality string) error {
+	if err := ls.SetupNetwork(url); err != nil {
 		return err
 	}
-
+	
 	if len(ls.requestsVideoCmfv) == 0 {
-		if quality == "high" {
-			ls.requestVideo =  ls.requestsVideoM3U8[len(ls.requestsVideoM3U8)-1]
-		} else if quality == "mid" {
-			ls.requestVideo = ls.requestsVideoM3U8[len(ls.requestsVideoM3U8)/2]
-		}else if quality == "low" {
-			ls.requestVideo = ls.requestsVideoM3U8[0]
-		}
+		ls.requestVideo = checkQuality(ls.requestsVideoM3U8, quality)
 	} else {
-		if quality == "high" {
-			ls.requestVideo =  ls.requestsVideoCmfv[len(ls.requestsVideoCmfv)-1]
-		} else if quality == "mid" {
-			ls.requestVideo = ls.requestsVideoCmfv[len(ls.requestsVideoCmfv)/2]
-		}else if quality == "low" {
-			ls.requestVideo = ls.requestsVideoCmfv[0]
-		}
+		ls.requestVideo = checkQuality(ls.requestsVideoCmfv, quality)
 	}
-
+	ls.taked = true
 	return nil
 }
 
+
+func checkQuality(requestsVideo []string, quality string) string {
+	var requestVideo string
+	if quality == "high" {
+		requestVideo =  requestsVideo[len(requestsVideo)-1]
+	} else if quality == "mid" {
+		requestVideo = requestsVideo[len(requestsVideo)/2]
+	}else if quality == "low" {
+		requestVideo = requestsVideo[0]
+	}
+	return requestVideo
+}
+
 // SaveVideo saves only the video.
-func (ls *URLS) SaveVideo(url, outputFile string) error {
+func (ls *INFO) SaveVideo(url, outputFile, quality string) error {
+	if !ls.taked{
+		err := ls.TakeRequests(url, quality)
+		if err != nil {
+			return err
+		}
+	}
 	if len(ls.requestsVideoCmfv) == 0 {
-		err := saveTsVideo(ls.requestVideo)
+		err := ts.SaveTsVideo(ls.requestVideo, outputFile)
 		if err != nil {
 			return fmt.Errorf("error while downloading: %v", err)
 		}
 	 } else {
-		err := downloadFile(url, outputFile)
+		err := downloadFile(ls.requestVideo, outputFile)
 		if err != nil {
 			return fmt.Errorf("error while downloading: %v", err)
 		}
@@ -220,99 +236,32 @@ func (ls *URLS) SaveVideo(url, outputFile string) error {
 	return nil
 }
 
-// SaveAudio saves only the audio from the video.
-func (ls *URLS) SaveAudio(url, outputFile string) error {
-	err := downloadFile(url, "temporaryAudioM4A.m4a")
-	if err != nil {
-		return fmt.Errorf("error while downloading: %v", err)
-	}
-
-	err = convertToMP3("temporaryAudioM4A.m4a", outputFile)
-	if err != nil {
-		return  fmt.Errorf("error converting to mp3: %v", err)
-	}
-	os.Remove("temporaryAudioM4A.m4a")
-
-	return nil
-}
-
-// convertToMP3 converts an audio file to MP3 format.
-func convertToMP3(inputFile, outputFile string) error {
-	cmd := exec.Command("ffmpeg", "-i", inputFile, "-vn", "-acodec", "libmp3lame", "-b:a", "192k", outputFile)
-	return cmd.Run()
-}
-
-// saveTsVideo processes the M3U8 playlist and saves the video in TS format.
-func saveTsVideo(url string) error {
-	parts := strings.SplitN(url, "/", 10)
-	prefixTsFile := strings.Join(parts[:9], "/") + "/"
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("M3U8 downloading error: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("M3U8 read error: %v", err)
-	}
-
-	log.Print(string(body))
-
-	lines := strings.Split(string(body), "\n")
-	output, err := os.Create("output.ts")
-	if err != nil {
-		return fmt.Errorf("error creating output.ts: %v", err)
-	}
-	defer output.Close()
-	//output.ts is a summary file with all the segments 
-
-	for i, line := range lines {
-		if strings.HasSuffix(line, ".ts") {
-			requestTs := prefixTsFile + line
-			log.Println(requestTs)
-
-			tsPart, err := saveTsPart(requestTs, i)
-			if err != nil {
-				return fmt.Errorf("error saving TS part: %v", err)
-			}
-
-			part, err := os.Open(tsPart.Name())
-			if err != nil {
-				return fmt.Errorf("error opening TS part: %v", err)
-			}
-
-			if _, err := io.Copy(output, part); err != nil {
-				return fmt.Errorf("error io.copy TS part: %v", err)
-			}
-
-			tsPart.Close()
+//saves the audio from the video.
+func (ls *INFO) SaveAudio(url, outputFile string) error {
+	if !ls.taked {
+		err := ls.SetupNetwork(url)
+		if err != nil {
+			return err
 		}
 	}
+	if len(ls.requestAudio) != 0 {
+		err := downloadFile(ls.requestAudio, "temporaryAudioM4A.m4a")
+		if err != nil {
+			return fmt.Errorf("error while downloading: %v", err)
+		}
 
+		err = goffmpeg.ConvertToMP3("temporaryAudioM4A.m4a", outputFile)
+		if err != nil {
+			return err
+		}
+
+		err = os.Remove("temporaryAudioM4A.m4a")
+		if err == nil {
+			return err
+		}
+
+	}
 	return nil
-}
-
-// saveTsPart saves a part of the TS file.
-func saveTsPart(url string, index int) (*os.File, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("TS part downloading error: %v", err)
-	}
-	defer resp.Body.Close()
-
-	nameFile := fmt.Sprintf("tsPart%d.ts", index)
-	file, err := os.Create(nameFile)
-	if err != nil {
-		return nil, fmt.Errorf("file creation error: %v", err)
-	}
-
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return nil, fmt.Errorf("io.copy error: %v", err)
-	}
-
-	return file, nil
 }
 
 // downloadFile downloads a file from a URL and saves it to disk.
@@ -336,25 +285,3 @@ func downloadFile(url, outputFile string) error {
 	return nil
 }
 
-// convertTSToMP4 converts a TS file to MP4.
-func convertTSToMP4(inputFile, outputFile string) error {
-	cmd := exec.Command("ffmpeg", "-i", inputFile, outputFile)
-	cmd.Run()
-
-	os.Remove(inputFile)
-	return nil 
-}
-
-// MergeVideoAndAudio merges video and audio into one file.
-func MergeVideoAndAudio(videoFile, audioFile, outputFile string) error {
-	cmd := exec.Command("ffmpeg", "-i", videoFile, "-i", audioFile, outputFile)
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("cmd.Run() error: %v", err)
-	}
-	
-	os.Remove(videoFile)
-	os.Remove(audioFile)
-
-	return nil 
-}
