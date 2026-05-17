@@ -20,8 +20,8 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	c "github.com/chromedp/chromedp"
-	goffmpeg "github.com/semenogka/pinterest-downloader/v2/GO_ffmpeg"
-	ts "github.com/semenogka/pinterest-downloader/v2/TS"
+	goffmpeg "github.com/semenogka/pinterest-downloader/v3/GO_ffmpeg"
+	ts "github.com/semenogka/pinterest-downloader/v3/TS"
 )
 
 // urls represents a structure for video and audio URLs.
