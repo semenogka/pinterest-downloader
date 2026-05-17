@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	goffmpeg "github.com/semenogka/pinterest-downloader/v2/GO_ffmpeg"
+	goffmpeg "github.com/semenogka/pinterest-downloader/v3/GO_ffmpeg"
 )
 
 // saveTsVideo processes the M3U8 playlist and saves the video in TS format.
