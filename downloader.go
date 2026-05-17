@@ -16,7 +16,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -47,7 +46,11 @@ func Client() *INFO {
 //video quality: high, mid or low.
 //logs for urls in console
 func (ls *INFO) DownloadFullVideo(url string, outputFile string, quality string, logs bool) error {
-	err := ls.TakeRequests(url, quality)
+	if err := ls.SetupNetwork(url); err != nil {
+		return err
+	}
+
+	err := ls.TakeRequests(quality)
 	if err != nil {
 		return err
 	}
@@ -60,13 +63,13 @@ func (ls *INFO) DownloadFullVideo(url string, outputFile string, quality string,
 	}
 
 	if len(ls.requestsVideoCmfv) != 0{
-		err = ls.SaveVideo(ls.requestVideo, "temporaryVideoFile.mp4", quality)
+		err = ls.saveVideo("temporaryVideoFile.mp4")
 		if err != nil {
 			return err
 		}
 
 		if len(ls.requestAudio) != 0 {
-			err = ls.SaveAudio("None","temporaryAudioFile.mp3")
+			err = ls.saveAudio("temporaryAudioFile.mp3")
 			if err != nil {
 				return err
 			}
@@ -77,7 +80,7 @@ func (ls *INFO) DownloadFullVideo(url string, outputFile string, quality string,
 			return err
 		}
 	} else {
-		err = ls.SaveVideo(ls.requestVideo, outputFile, quality)
+		err = ls.saveVideo(outputFile)
 		if err != nil {
 			return err
 		}
@@ -124,8 +127,7 @@ func (ls *INFO) SetupNetwork(url string) error {
 						return
 					}
 					cmfvMap[url] = num
-				}
-				if strings.HasSuffix(url, "m3u8") || strings.Contains(url, ".m3u8") {
+				} else if strings.HasSuffix(url, "m3u8") || strings.Contains(url, ".m3u8") {
 					num, err := strconv.Atoi(url[len(url)-9:len(url)-6]) 
 					if err != nil {
 						return
@@ -139,20 +141,18 @@ func (ls *INFO) SetupNetwork(url string) error {
 	// Navigate to the page
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
-		chromedp.Sleep(5*time.Second), // Wait for page to load
+		//chromedp.Sleep(0*time.Second), // Wait for page to load
 	); err != nil {
 		return err
 	}
 
-	ls.UniqueUrls(cmfvMap, m3u8Map)
+	ls.uniqueUrls(cmfvMap, m3u8Map)
 
-	// Additional wait for resources
-	time.Sleep(2 * time.Second)
 	return nil
 }
 
 //make array of url with different image quality:low, mid, high
-func (ls *INFO) UniqueUrls(cmfvMap map[string]int, m3u8Map map[string]int) {
+func (ls *INFO) uniqueUrls(cmfvMap map[string]int, m3u8Map map[string]int) {
 	//u-url, q-quality
 	type uq struct {
 		Url   string
@@ -186,11 +186,7 @@ func (ls *INFO) UniqueUrls(cmfvMap map[string]int, m3u8Map map[string]int) {
 
 
 // TakeRequests finds video and audio links.
-func (ls *INFO) TakeRequests(url string, quality string) error {
-	if err := ls.SetupNetwork(url); err != nil {
-		return err
-	}
-	
+func (ls *INFO) TakeRequests(quality string) error {
 	if len(ls.requestsVideoCmfv) == 0 {
 		ls.requestVideo = checkQuality(ls.requestsVideoM3U8, quality)
 	} else {
@@ -213,14 +209,8 @@ func checkQuality(requestsVideo []string, quality string) string {
 	return requestVideo
 }
 
-// SaveVideo saves only the video.
-func (ls *INFO) SaveVideo(url, outputFile, quality string) error {
-	if !ls.taked{
-		err := ls.TakeRequests(url, quality)
-		if err != nil {
-			return err
-		}
-	}
+//saves the video.
+func (ls *INFO) saveVideo(outputFile string) error {
 	if len(ls.requestsVideoCmfv) == 0 {
 		err := ts.SaveTsVideo(ls.requestVideo, outputFile)
 		if err != nil {
@@ -237,13 +227,7 @@ func (ls *INFO) SaveVideo(url, outputFile, quality string) error {
 }
 
 //saves the audio from the video.
-func (ls *INFO) SaveAudio(url, outputFile string) error {
-	if !ls.taked {
-		err := ls.SetupNetwork(url)
-		if err != nil {
-			return err
-		}
-	}
+func (ls *INFO) saveAudio(outputFile string) error {
 	if len(ls.requestAudio) != 0 {
 		err := downloadFile(ls.requestAudio, "temporaryAudioM4A.m4a")
 		if err != nil {
@@ -260,9 +244,46 @@ func (ls *INFO) SaveAudio(url, outputFile string) error {
 			return err
 		}
 
+	} 
+	return nil
+}
+
+//download only audio from video
+func (ls *INFO) SaveOnlyAudio(url, outputFile string) error{
+	if err := ls.SetupNetwork(url); err != nil {
+		return err
+	}
+	
+	if len(ls.requestAudio) != 0 {
+		err := downloadFile(ls.requestAudio, "temporaryAudioM4A.m4a")
+		if err != nil {
+			return fmt.Errorf("error while downloading: %v", err)
+		}
+
+		err = goffmpeg.ConvertToMP3("temporaryAudioM4A.m4a", outputFile)
+		if err != nil {
+			return err
+		}
+
+		err = os.Remove("temporaryAudioM4A.m4a")
+		if err == nil {
+			return err
+		}
+	} else {
+		err := ls.TakeRequests("high")
+		if err != nil {
+			return err
+		}
+
+		err = ts.SaveTsVideo(ls.requestVideo, outputFile)
+		if err != nil {
+			return fmt.Errorf("error while downloading: %v", err)
+		}
 	}
 	return nil
 }
+
+
 
 // downloadFile downloads a file from a URL and saves it to disk.
 func downloadFile(url, outputFile string) error {

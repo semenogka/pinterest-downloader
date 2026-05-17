@@ -34,3 +34,4 @@ func ConvertToMP3(inputFile, outputFile string) error {
 	cmd := exec.Command("ffmpeg", "-i", inputFile, "-vn", "-acodec", "libmp3lame", "-b:a", "192k", outputFile)
 	return cmd.Run()
 }
+
