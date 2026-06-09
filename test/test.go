@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	pin "github.com/semenogka/pinterest-downloader/v2"
+	pin "github.com/semenogka/pinterest-downloader/v3"
 )
 
 func main() {
